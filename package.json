@@ -1,0 +1,38 @@
+{
+  "name": "loxone-mcp-proxy",
+  "version": "0.1.0",
+  "description": "Local, zero-dependency MCP proxy for the Loxone Miniserver's native MCP Server. Gives Claude Desktop a stable stdio endpoint with automatic Loxone Cloud relay resolution and headless (no-browser) credential login.",
+  "type": "module",
+  "bin": {
+    "loxone-mcp-proxy": "src/index.js"
+  },
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "login-check": "node scripts/login-check.js",
+    "test": "node --test",
+    "test:integration": "LOXONE_INTEGRATION=1 node --test test/integration.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "src/",
+    "scripts/",
+    ".env.example",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "loxone",
+    "miniserver",
+    "home-automation",
+    "smart-home",
+    "claude",
+    "claude-desktop"
+  ],
+  "author": "Ivan Tichy",
+  "license": "MIT"
+}

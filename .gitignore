@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Secrets — NEVER commit real credentials
+.env
+.env.local
+*.local
+
+# Token / client cache
+.loxone-mcp-proxy/
+cache.json
+
+# Logs
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Scratch / probes
+_probe*.mjs
+scratch/
