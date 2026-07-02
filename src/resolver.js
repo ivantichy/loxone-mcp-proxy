@@ -48,15 +48,20 @@ export class EndpointResolver {
 
     const loc = res.headers.get('location');
     if (res.status >= 300 && res.status < 400 && loc) {
-      let origin;
+      let u;
       try {
-        origin = new URL(loc).origin;
+        u = new URL(loc);
       } catch {
         throw new ResolveError(`connect returned an invalid redirect location: ${loc}`, { retryable: false });
       }
-      this._cachedEntry = origin;
-      this.log.debug('resolver: entry =', origin);
-      return origin;
+      // The entry receives the login credentials and Bearer tokens — never
+      // accept a plaintext (or otherwise non-HTTPS) target for it.
+      if (u.protocol !== 'https:') {
+        throw new ResolveError(`connect redirected to a non-HTTPS origin (${u.origin}) — refusing to send credentials over it`, { retryable: false });
+      }
+      this._cachedEntry = u.origin;
+      this.log.debug('resolver: entry =', u.origin);
+      return u.origin;
     }
 
     throw new ResolveError(`connect did not redirect (HTTP ${res.status})`, { retryable: res.status >= 500 });

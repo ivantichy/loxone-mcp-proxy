@@ -32,6 +32,12 @@ test('resolve throws a retryable ResolveError on 429', async () => {
   await assert.rejects(() => r.resolve(), (e) => e instanceof ResolveError && e.retryable === true && e.resetEpoch === 123);
 });
 
+test('resolve refuses a non-HTTPS redirect target', async () => {
+  const fetchImpl = mockFetch(() => resp({ status: 307, headers: { location: 'http://1-2-3-4.abc.dyndns.loxonecloud.com:555/mcp' } }));
+  const r = new EndpointResolver({ ...base, fetchImpl });
+  await assert.rejects(() => r.resolve(), (e) => e instanceof ResolveError && e.retryable === false && /non-HTTPS/.test(e.message));
+});
+
 test('resolve throws when there is no redirect', async () => {
   const fetchImpl = mockFetch(() => resp({ status: 200, body: 'nope' }));
   const r = new EndpointResolver({ ...base, fetchImpl });
