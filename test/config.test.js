@@ -27,6 +27,17 @@ test('loadConfig throws listing all missing required fields', () => {
   process.env = save;
 });
 
+test('loadConfig rejects non-numeric integer settings instead of propagating NaN', () => {
+  const save = { ...process.env };
+  process.env.LOXONE_NO_DOTENV = '1';
+  process.env.LOXONE_SERIAL = 'ABC';
+  process.env.LOXONE_USER = 'mcp';
+  process.env.LOXONE_PASSWORD = 'pw';
+  process.env.LOXONE_REDIRECT_PORT = 'abc';
+  assert.throws(() => loadConfig(), /LOXONE_REDIRECT_PORT/);
+  process.env = save;
+});
+
 test('loadConfig normalizes the serial and reads credentials', () => {
   const save = { ...process.env };
   process.env.LOXONE_NO_DOTENV = '1';

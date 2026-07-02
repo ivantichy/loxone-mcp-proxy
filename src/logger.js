@@ -13,7 +13,8 @@ function currentThreshold() {
 function fmt(a) {
   if (typeof a === 'string') return a;
   if (a instanceof Error) return a.stack || a.message;
-  try { return JSON.stringify(a); } catch { return String(a); }
+  // JSON.stringify(undefined) returns undefined, which would blank the line
+  try { return JSON.stringify(a) ?? String(a); } catch { return String(a); }
 }
 
 function emit(level, args) {

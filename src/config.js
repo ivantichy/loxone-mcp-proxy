@@ -44,6 +44,17 @@ export function loadDotEnv(explicitPath) {
   return null;
 }
 
+/** Parse an integer env var, failing loudly instead of propagating NaN. */
+function intEnv(name, fallback, { min = 1, max = Infinity } = {}) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isSafeInteger(n) || n < min || n > max) {
+    throw new Error(`${name} must be an integer in [${min}, ${max === Infinity ? '…' : max}] (got "${raw}")`);
+  }
+  return n;
+}
+
 /** Load and validate configuration from environment (+ .env). */
 export function loadConfig() {
   const envFile = process.env.LOXONE_NO_DOTENV ? null : loadDotEnv();
@@ -69,10 +80,10 @@ export function loadConfig() {
     password,
     connectBase: (process.env.LOXONE_CONNECT_BASE || 'https://connect.loxonecloud.com').replace(/\/+$/, ''),
     cachePath: process.env.LOXONE_CACHE_PATH || path.join(os.homedir(), '.loxone-mcp-proxy', 'cache.json'),
-    redirectPort: parseInt(process.env.LOXONE_REDIRECT_PORT || '41678', 10),
-    maxResolveAttempts: parseInt(process.env.LOXONE_MAX_ATTEMPTS || '6', 10),
-    connectMinIntervalMs: parseInt(process.env.LOXONE_CONNECT_MIN_INTERVAL_MS || '2000', 10),
-    requestTimeoutMs: parseInt(process.env.LOXONE_REQUEST_TIMEOUT_MS || '120000', 10),
+    redirectPort: intEnv('LOXONE_REDIRECT_PORT', 41678, { min: 1, max: 65535 }),
+    maxResolveAttempts: intEnv('LOXONE_MAX_ATTEMPTS', 6),
+    connectMinIntervalMs: intEnv('LOXONE_CONNECT_MIN_INTERVAL_MS', 2000, { min: 0 }),
+    requestTimeoutMs: intEnv('LOXONE_REQUEST_TIMEOUT_MS', 120_000, { min: 1000 }),
     envFile,
   };
 }
