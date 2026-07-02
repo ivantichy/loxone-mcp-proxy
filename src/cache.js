@@ -27,7 +27,11 @@ export class TokenCache {
   save(data) {
     try {
       fs.mkdirSync(path.dirname(this.filePath), { recursive: true, mode: 0o700 });
-      fs.writeFileSync(this.filePath, JSON.stringify(data, null, 2), { mode: 0o600 });
+      // Write-then-rename so a crash mid-write can't leave a corrupt cache
+      // (a corrupt cache silently costs a full re-login on next start).
+      const tmp = `${this.filePath}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify(data, null, 2), { mode: 0o600 });
+      fs.renameSync(tmp, this.filePath);
     } catch (e) {
       this.log.warn('cache: failed to write cache:', e.message);
     }
