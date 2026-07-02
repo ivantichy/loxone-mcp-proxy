@@ -96,6 +96,12 @@ test('readSSE parses multiple events and ignores keep-alives', async () => {
   assert.deepEqual(msgs, [{ a: 1 }, { b: 2 }]);
 });
 
+test('readSSE handles CRLF line endings and multi-line data', async () => {
+  const body = 'event: message\r\ndata: {"a":1}\r\n\r\ndata: {"b":\r\ndata: 2}\r\n\r\n';
+  const msgs = await readSSE(resp({ body }));
+  assert.deepEqual(msgs, [{ a: 1 }, { b: 2 }]);
+});
+
 test('send replays initialize when the session was lost', async () => {
   const posts = [];
   const fetchImpl = async (url, opts) => {

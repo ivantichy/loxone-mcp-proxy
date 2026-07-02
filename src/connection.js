@@ -244,10 +244,12 @@ export async function readSSE(res) {
     const { done, value } = await reader.read();
     if (done) break;
     buf += decoder.decode(value, { stream: true });
-    let idx;
-    while ((idx = buf.indexOf('\n\n')) >= 0) {
-      flushEvent(buf.slice(0, idx));
-      buf = buf.slice(idx + 2);
+    // The SSE spec allows LF or CRLF line endings — accept both as the
+    // blank-line event boundary.
+    let m;
+    while ((m = buf.match(/\r?\n\r?\n/))) {
+      flushEvent(buf.slice(0, m.index));
+      buf = buf.slice(m.index + m[0].length);
     }
   }
   buf += decoder.decode(); // flush any pending bytes
