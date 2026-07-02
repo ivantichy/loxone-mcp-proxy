@@ -17,6 +17,7 @@ export class Connection {
     this.requestTimeoutMs = requestTimeoutMs;
 
     this.state = null; // {entryOrigin,resource,clientId,accessToken,refreshToken,tokenType,expiresAt}
+    this._authInflight = null;
     this.sessionId = null;
     this.protocolVersion = null;
     this.initMessage = null; // remembered "initialize" request for transparent replay
@@ -59,8 +60,22 @@ export class Connection {
     }
   }
 
-  /** Ensure we hold a valid access token. Refresh if possible, else full login. */
+  /** Ensure we hold a valid access token. Refresh if possible, else full login.
+   *  Single-flight: concurrent callers (startup warmup vs the first request)
+   *  share one auth run instead of racing two full logins. */
   async ensureAuth({ force = false } = {}) {
+    if (this._authInflight) {
+      if (!force) return this._authInflight;
+      await this._authInflight.catch(() => {}); // let the running attempt settle, then force
+    }
+    const p = this._ensureAuthNow(force).finally(() => {
+      if (this._authInflight === p) this._authInflight = null;
+    });
+    this._authInflight = p;
+    return p;
+  }
+
+  async _ensureAuthNow(force) {
     if (!force && this._tokenValid()) return;
 
     if (!force && this.state?.refreshToken && this.state?.entryOrigin && this.state?.resource && this.state?.clientId) {

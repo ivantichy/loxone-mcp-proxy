@@ -51,6 +51,18 @@ test('ensureAuth keeps the stored refresh token when the response omits it', asy
   assert.equal(c.state.refreshToken, 'RT', 'old refresh token must survive a non-rotating refresh');
 });
 
+test('concurrent ensureAuth calls share a single auth run (no double login)', async () => {
+  let authorized = 0;
+  const auth = {
+    fetch: async () => {},
+    authorize: async () => { authorized++; await new Promise((r) => setTimeout(r, 20)); return token(); },
+    refresh: async () => { throw new Error('no'); },
+  };
+  const c = new Connection({ resolver: resolverStub(), auth, cache: nullCache(), log: silent, fetchImpl: async () => {} });
+  await Promise.all([c.ensureAuth(), c.ensureAuth(), c.ensureAuth()]);
+  assert.equal(authorized, 1, 'warmup and first request must not race two logins');
+});
+
 test('ensureAuth falls back to full auth when refresh fails', async () => {
   const cache = { load: () => token({ expiresAt: Date.now() - 1000 }), save() {} };
   const auth = { fetch: async () => {}, authorize: async () => token({ accessToken: 'FRESH' }), refresh: async () => { throw new Error('refresh boom'); } };
