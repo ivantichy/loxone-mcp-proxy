@@ -24,9 +24,13 @@ export class StdioProxy {
       const trimmed = line.trim();
       if (trimmed) this._enqueue(trimmed);
     });
-    rl.on('close', () => {
-      this.log.info('proxy: stdin closed, shutting down');
-      process.exit(0);
+    rl.on('close', async () => {
+      this.log.info('proxy: stdin closed, draining and shutting down');
+      // Readline can emit a final line right before 'close'; finish the queue,
+      // then let stdout flush — pipe writes are asynchronous on Windows and a
+      // bare process.exit() would truncate an in-flight response.
+      try { await this.queue; } catch { /* handler errors are already logged */ }
+      this.output.write('', () => process.exit(0));
     });
     this.log.info('proxy: ready (Claude stdio <-> Loxone MCP)');
   }
@@ -46,11 +50,16 @@ export class StdioProxy {
     try {
       const responses = await this.connection.send(msg);
       for (const r of responses) this._write(r);
+      // A request must produce a response; if the remote answered with nothing
+      // (e.g. a bare 202), synthesize an error so Claude doesn't hang forever.
+      if (isRequest(msg) && !responses.some((r) => r && r.id === msg.id)) {
+        this._write({ jsonrpc: '2.0', id: msg.id, error: { code: -32001, message: 'loxone-mcp-proxy: remote returned no response for this request' } });
+      }
     } catch (e) {
       this.log.error(`proxy: send failed for "${msg.method || '?'}": ${e.message}`);
       // Only requests (with an id) expect a reply; answer with a JSON-RPC error
       // so Claude doesn't hang waiting.
-      if (msg && msg.id !== undefined && msg.id !== null) {
+      if (isRequest(msg)) {
         this._write({ jsonrpc: '2.0', id: msg.id, error: { code: -32001, message: `loxone-mcp-proxy: ${e.message}` } });
       }
     }
@@ -63,4 +72,8 @@ export class StdioProxy {
       this.log.warn('proxy: stdout write failed:', e.message);
     }
   }
+}
+
+function isRequest(m) {
+  return !!m && m.id !== undefined && m.id !== null;
 }
