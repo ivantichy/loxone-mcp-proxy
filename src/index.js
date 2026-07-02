@@ -7,9 +7,16 @@ import { TokenCache } from './cache.js';
 import { Connection } from './connection.js';
 import { StdioProxy } from './proxy.js';
 
-// Never let a stray rejection kill the stdio pipe silently.
+// A stray rejection is logged but tolerated — background retries may reject
+// after their request already failed over, and killing the pipe for that
+// would drop a healthy session. An uncaught synchronous exception is
+// different: internal state may be arbitrarily corrupt, so log it loudly and
+// exit non-zero — Claude Desktop restarts the server and gets a clean state.
 process.on('unhandledRejection', (e) => logger.error('unhandledRejection:', e));
-process.on('uncaughtException', (e) => logger.error('uncaughtException:', e));
+process.on('uncaughtException', (e) => {
+  logger.error('uncaughtException (exiting):', e);
+  process.exit(1);
+});
 
 async function main() {
   let config;
