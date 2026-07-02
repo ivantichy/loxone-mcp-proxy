@@ -11,7 +11,7 @@
     "start": "node src/index.js",
     "login-check": "node scripts/login-check.js",
     "test": "node --test",
-    "test:integration": "LOXONE_INTEGRATION=1 node --test test/integration.test.js"
+    "test:integration": "node --test test/integration.test.js"
   },
   "engines": {
     "node": ">=20"

@@ -167,7 +167,10 @@ disable the write tools in your MCP client's connector settings.
 - **Use a dedicated Loxone user** with the least privilege necessary. The
   assistant can only see and do what that user can.
 - Credentials live only in your local `.env` (git-ignored). Tokens are cached at
-  `~/.loxone-mcp-proxy/cache.json` with `0600` permissions.
+  `~/.loxone-mcp-proxy/cache.json` with `0600` permissions. **Windows note:**
+  POSIX file modes are effectively ignored on Windows — the cache is only as
+  private as your user profile directory (NTFS ACLs), so keep the machine
+  account personal.
 - Nothing is sent to any third-party cloud — the proxy talks only to Loxone's own
   connect/relay infrastructure and your Miniserver.
 
@@ -176,7 +179,11 @@ disable the write tools in your MCP client's connector settings.
 Run with verbose logging (to stderr):
 
 ```bash
-LOXONE_DEBUG=1 npm run login-check
+LOXONE_DEBUG=1 npm run login-check              # macOS / Linux
+```
+
+```powershell
+$env:LOXONE_DEBUG='1'; npm run login-check      # Windows PowerShell
 ```
 
 - **`login was rejected (form re-rendered)`** — wrong `LOXONE_USER` /
@@ -202,13 +209,25 @@ All optional, via `.env` or environment:
 | `LOXONE_CONNECT_BASE` | `https://connect.loxonecloud.com` | Loxone Cloud connect base |
 | `LOXONE_CACHE_PATH` | `~/.loxone-mcp-proxy/cache.json` | token cache location |
 | `LOXONE_REDIRECT_PORT` | `41678` | loopback port used only as the OAuth redirect target |
+| `LOXONE_REQUEST_TIMEOUT_MS` | `120000` | per-request deadline for MCP calls to the relay |
+| `LOXONE_MAX_ATTEMPTS` | `6` | max authentication attempts before giving up |
+| `LOXONE_CONNECT_MIN_INTERVAL_MS` | `2000` | min. spacing between connect-endpoint calls |
+| `LOXONE_ENV_FILE` | — | explicit path to the `.env` file to load |
+| `LOXONE_NO_DOTENV` | `0` | set `1` to skip `.env` loading entirely |
 | `LOXONE_DEBUG` | `0` | set `1` for verbose stderr logging |
+| `LOXONE_LOG_LEVEL` | `info` | `error` / `warn` / `info` / `debug` (ignored if `LOXONE_DEBUG=1`) |
 
 ## Development
 
 ```bash
-npm test                 # unit tests (node:test, no deps)
-LOXONE_INTEGRATION=1 npm run test:integration   # live test (needs .env + device)
+npm test                                        # unit tests (node:test, no deps)
+
+# live integration test (needs .env + a reachable Miniserver) — opt in via env:
+LOXONE_INTEGRATION=1 npm run test:integration   # macOS / Linux
+```
+
+```powershell
+$env:LOXONE_INTEGRATION='1'; npm run test:integration   # Windows PowerShell
 ```
 
 Layout:

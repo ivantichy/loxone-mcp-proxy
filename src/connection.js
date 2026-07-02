@@ -1,4 +1,5 @@
 import logger from './logger.js';
+import { sleep } from './resolver.js';
 
 /**
  * Owns the live connection to the Loxone MCP endpoint: endpoint resolution,
@@ -289,9 +290,6 @@ function isAbort(e) {
 
 export function backoff(attempt) {
   return Math.min(500 * 2 ** (attempt - 1), 8000);
-}
-export function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
 }
 async function safeText(res) {
   try { return await res.text(); } catch { return ''; }

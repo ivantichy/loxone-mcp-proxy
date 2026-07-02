@@ -202,7 +202,7 @@ export function normalizeTokens(j) {
     accessToken: j.access_token,
     refreshToken: j.refresh_token || null,
     tokenType: j.token_type || 'Bearer',
-    // refresh a bit early to avoid races
+    // Connection._tokenValid() treats the token as stale 60 s before this
     expiresAt: Date.now() + expiresInMs,
   };
 }
