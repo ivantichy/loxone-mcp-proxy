@@ -7,13 +7,14 @@ import logger from './logger.js';
  * Callers just call send(); everything else is hidden.
  */
 export class Connection {
-  constructor({ resolver, auth, cache, log = logger, fetchImpl = fetch, maxAuthAttempts = 6 }) {
+  constructor({ resolver, auth, cache, log = logger, fetchImpl = fetch, maxAuthAttempts = 6, requestTimeoutMs = 120_000 }) {
     this.resolver = resolver;
     this.auth = auth;
     this.cache = cache;
     this.log = log;
     this.fetch = fetchImpl;
     this.maxAuthAttempts = maxAuthAttempts;
+    this.requestTimeoutMs = requestTimeoutMs;
 
     this.state = null; // {entryOrigin,resource,clientId,accessToken,refreshToken,tokenType,expiresAt}
     this.sessionId = null;
@@ -123,11 +124,22 @@ export class Connection {
         lastError = e;
         if (e instanceof Unauthorized) {
           this.log.warn('connection: 401 from endpoint; re-authenticating');
-          await this.ensureAuth({ force: true });
+          // First 401: invalidate expiry so ensureAuth tries the cheap refresh
+          // before a full credential login; repeated 401s force the full login.
+          if (this.state) this.state.expiresAt = 0;
+          await this.ensureAuth({ force: attempt > 1 });
         } else if (e instanceof SessionExpired) {
           this.log.warn('connection: MCP session expired; will re-initialize');
           this.sessionId = null;
           this.protocolVersion = null;
+        } else if (e instanceof TimeoutError) {
+          // Never blind-retry a timed-out call: the remote may still execute it
+          // (e.g. control_command), and a retry could run the command twice.
+          // Heal the connection for subsequent requests, surface the timeout.
+          this.log.warn(`connection: ${e.message}; re-resolving relay for subsequent requests`);
+          this.sessionId = null;
+          await this._reresolveEntry();
+          throw e;
         } else if (e instanceof NetworkError) {
           this.log.warn(`connection: network error (${e.message}); re-resolving relay`);
           await this._reresolveEntry();
@@ -161,16 +173,22 @@ export class Connection {
     if (this.sessionId) headers['mcp-session-id'] = this.sessionId;
     if (this.protocolVersion) headers['mcp-protocol-version'] = this.protocolVersion;
 
+    // Bound every request: a relay that accepts the TCP connection but never
+    // completes the response (or holds an SSE stream open with keep-alives
+    // forever) must not wedge the proxy. The signal also aborts body reads.
+    const signal = AbortSignal.timeout(this.requestTimeoutMs);
     let res;
     try {
-      res = await this.fetch(this._mcpUrl(), { method: 'POST', headers, body: JSON.stringify(message) });
+      res = await this.fetch(this._mcpUrl(), { method: 'POST', headers, body: JSON.stringify(message), signal });
     } catch (e) {
-      throw new NetworkError(e.message);
+      throw isAbort(e) ? new TimeoutError(this.requestTimeoutMs) : new NetworkError(e.message);
     }
 
     if (res.status === 401) throw new Unauthorized();
     if (res.status >= 500) throw new NetworkError(`HTTP ${res.status}`);
-    if (res.status === 404 && this.sessionId) throw new SessionExpired();
+    // 404 with a session = the session was dropped; without one it is most
+    // likely a stale cached relay entry — either way, recoverable.
+    if (res.status === 404) throw this.sessionId ? new SessionExpired() : new NetworkError('HTTP 404 (stale relay entry?)');
     if (!res.ok && res.status !== 202) {
       const body = await safeText(res);
       // Some relays report a lost session as 400 rather than 404.
@@ -184,10 +202,17 @@ export class Connection {
     let messages = [];
     if (res.status !== 202) {
       const ct = res.headers.get('content-type') || '';
-      if (ct.includes('text/event-stream')) messages = await readSSE(res);
-      else if (ct.includes('application/json')) {
-        const j = await res.json();
-        messages = Array.isArray(j) ? j : [j];
+      // A failure while reading the body (aborted SSE stream, connection reset
+      // mid-response) is a transport problem — classify it so send() runs the
+      // same re-resolve recovery as a failed fetch instead of giving up.
+      try {
+        if (ct.includes('text/event-stream')) messages = await readSSE(res);
+        else if (ct.includes('application/json')) {
+          const j = await res.json();
+          messages = Array.isArray(j) ? j : [j];
+        }
+      } catch (e) {
+        throw isAbort(e) ? new TimeoutError(this.requestTimeoutMs) : new NetworkError(`response body read failed: ${e.message}`);
       }
     }
 
@@ -233,6 +258,11 @@ export async function readSSE(res) {
 export class Unauthorized extends Error { constructor() { super('unauthorized'); this.name = 'Unauthorized'; } }
 export class SessionExpired extends Error { constructor() { super('session expired'); this.name = 'SessionExpired'; } }
 export class NetworkError extends Error { constructor(m) { super(m); this.name = 'NetworkError'; } }
+export class TimeoutError extends Error { constructor(ms) { super(`request timed out after ${ms}ms`); this.name = 'TimeoutError'; } }
+
+function isAbort(e) {
+  return !!e && (e.name === 'TimeoutError' || e.name === 'AbortError');
+}
 
 export function backoff(attempt) {
   return Math.min(500 * 2 ** (attempt - 1), 8000);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Connection, readSSE, backoff } from '../src/connection.js';
+import { Connection, TimeoutError, readSSE, backoff } from '../src/connection.js';
 import { resp } from './helpers.js';
 
 const silent = { error() {}, warn() {}, info() {}, debug() {} };
@@ -113,6 +113,57 @@ test('send replays initialize when the session was lost', async () => {
   assert.ok(posts.includes('initialize'));
   assert.equal(c.sessionId, 'NEWSID');
   assert.equal(msgs[0].id, 9);
+});
+
+test('a timed-out request is NOT retried (no double execution) but heals the connection', async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls++;
+    const e = new Error('aborted');
+    e.name = 'TimeoutError';
+    throw e;
+  };
+  let resolved = 0;
+  const resolver = { resolve: async () => { resolved++; return 'https://entry.x:1'; }, invalidate() {} };
+  const auth = { fetch: fetchImpl, authorize: async () => token(), refresh: async () => { throw new Error('no'); } };
+  const c = new Connection({ resolver, auth, cache: nullCache(), log: silent, fetchImpl, requestTimeoutMs: 5 });
+  c.state = token();
+  await assert.rejects(() => c.send({ jsonrpc: '2.0', id: 7, method: 'tools/call' }), TimeoutError);
+  assert.equal(calls, 1, 'timed-out call must not be re-sent');
+  assert.ok(resolved >= 1, 'relay should be re-resolved for subsequent requests');
+});
+
+test('a body-read failure is classified as a network error and recovered', async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls++;
+    if (calls === 1) {
+      const r = resp({ status: 200, headers: { 'content-type': 'application/json' }, body: '{}' });
+      r.json = async () => { throw new Error('socket hang up mid-body'); };
+      return r;
+    }
+    return resp({ status: 200, headers: { 'content-type': 'application/json' }, body: '{"jsonrpc":"2.0","id":5,"result":{}}' });
+  };
+  const auth = { fetch: fetchImpl, authorize: async () => token(), refresh: async () => { throw new Error('no'); } };
+  const c = new Connection({ resolver: resolverStub(), auth, cache: nullCache(), log: silent, fetchImpl });
+  c.state = token();
+  const msgs = await c.send({ jsonrpc: '2.0', id: 5, method: 'tools/list' });
+  assert.equal(msgs[0].id, 5);
+  assert.equal(calls, 2);
+});
+
+test('404 without a session is treated as a stale relay, not a fatal error', async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls++;
+    if (calls === 1) return resp({ status: 404, body: 'not found' });
+    return resp({ status: 200, headers: { 'content-type': 'application/json' }, body: '{"jsonrpc":"2.0","id":6,"result":{}}' });
+  };
+  const auth = { fetch: fetchImpl, authorize: async () => token(), refresh: async () => { throw new Error('no'); } };
+  const c = new Connection({ resolver: resolverStub(), auth, cache: nullCache(), log: silent, fetchImpl });
+  c.state = token();
+  const msgs = await c.send({ jsonrpc: '2.0', id: 6, method: 'tools/list' });
+  assert.equal(msgs[0].id, 6);
 });
 
 test('backoff grows and is capped at 8s', () => {

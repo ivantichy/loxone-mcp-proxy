@@ -72,6 +72,7 @@ export function loadConfig() {
     redirectPort: parseInt(process.env.LOXONE_REDIRECT_PORT || '41678', 10),
     maxResolveAttempts: parseInt(process.env.LOXONE_MAX_ATTEMPTS || '6', 10),
     connectMinIntervalMs: parseInt(process.env.LOXONE_CONNECT_MIN_INTERVAL_MS || '2000', 10),
+    requestTimeoutMs: parseInt(process.env.LOXONE_REQUEST_TIMEOUT_MS || '120000', 10),
     envFile,
   };
 }

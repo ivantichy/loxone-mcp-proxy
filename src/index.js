@@ -33,7 +33,11 @@ async function main() {
     redirectPort: config.redirectPort,
   });
   const cache = new TokenCache(config.cachePath);
-  const connection = new Connection({ resolver, auth, cache, maxAuthAttempts: config.maxResolveAttempts });
+  const connection = new Connection({
+    resolver, auth, cache,
+    maxAuthAttempts: config.maxResolveAttempts,
+    requestTimeoutMs: config.requestTimeoutMs,
+  });
 
   const proxy = new StdioProxy({ connection });
   proxy.start();
