@@ -38,6 +38,19 @@ test('ensureAuth refreshes an expired token', async () => {
   assert.equal(c.state.accessToken, 'AT2');
 });
 
+test('ensureAuth keeps the stored refresh token when the response omits it', async () => {
+  const cache = { load: () => token({ expiresAt: Date.now() - 1000 }), save() {} };
+  const auth = {
+    fetch: async () => {},
+    authorize: async () => { throw new Error('should not full-auth'); },
+    refresh: async () => ({ accessToken: 'AT2', refreshToken: null, tokenType: 'Bearer', expiresAt: Date.now() + 3600_000 }),
+  };
+  const c = new Connection({ resolver: resolverStub(), auth, cache, log: silent, fetchImpl: async () => {} });
+  await c.ensureAuth();
+  assert.equal(c.state.accessToken, 'AT2');
+  assert.equal(c.state.refreshToken, 'RT', 'old refresh token must survive a non-rotating refresh');
+});
+
 test('ensureAuth falls back to full auth when refresh fails', async () => {
   const cache = { load: () => token({ expiresAt: Date.now() - 1000 }), save() {} };
   const auth = { fetch: async () => {}, authorize: async () => token({ accessToken: 'FRESH' }), refresh: async () => { throw new Error('refresh boom'); } };

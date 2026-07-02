@@ -70,7 +70,9 @@ export class Connection {
           refreshToken: this.state.refreshToken,
           resource: this.state.resource,
         });
-        this.state = { ...this.state, ...t };
+        // If the endpoint didn't rotate the refresh token, keep the one we
+        // have — clobbering it with null would force a full login next time.
+        this.state = { ...this.state, ...t, refreshToken: t.refreshToken ?? this.state.refreshToken };
         this._saveCache();
         this.log.info('connection: access token refreshed');
         return;
