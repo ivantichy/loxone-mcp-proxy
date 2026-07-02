@@ -96,6 +96,10 @@ export class Connection {
       } catch (e) {
         lastErr = e;
         this.log.warn(`connection: auth attempt ${attempt}/${this.maxAuthAttempts} failed: ${e.message}`);
+        // A definitive rejection (wrong credentials, access denied) will not
+        // improve with another attempt or relay — fail fast instead of
+        // hammering the Miniserver login and risking a user lockout.
+        if (e.retryable === false) break;
         this.resolver.invalidate();
         if (attempt < this.maxAuthAttempts) await sleep(backoff(attempt));
       }

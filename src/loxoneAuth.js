@@ -133,7 +133,7 @@ export class LoxoneAuth {
     const loc = p.headers.get('location');
     if (!loc) {
       if (p.status === 200) {
-        throw new AuthError('login was rejected (form re-rendered) — check LOXONE_USER / LOXONE_PASSWORD and that the user may access this Miniserver');
+        throw new AuthError('login was rejected (form re-rendered) — check LOXONE_USER / LOXONE_PASSWORD and that the user may access this Miniserver', { retryable: false });
       }
       throw new AuthError(`login POST returned HTTP ${p.status} with no redirect`);
     }
@@ -141,7 +141,7 @@ export class LoxoneAuth {
     const err = cb.searchParams.get('error');
     if (err) {
       const desc = cb.searchParams.get('error_description') || '';
-      throw new AuthError(`authorization failed: ${err} ${desc}`.trim());
+      throw new AuthError(`authorization failed: ${err} ${desc}`.trim(), { retryable: err !== 'access_denied' });
     }
     const code = cb.searchParams.get('code');
     if (!code) throw new AuthError('no authorization code returned in the callback');
@@ -208,10 +208,13 @@ export function normalizeTokens(j) {
 }
 
 export class AuthError extends Error {
-  constructor(message, { status } = {}) {
+  constructor(message, { status, retryable = true } = {}) {
     super(message);
     this.name = 'AuthError';
     this.status = status;
+    // false = a definitive rejection (e.g. wrong credentials) that another
+    // attempt or another relay cannot fix — callers should fail fast.
+    this.retryable = retryable;
   }
 }
 

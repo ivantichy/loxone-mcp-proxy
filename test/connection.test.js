@@ -172,6 +172,23 @@ test('404 without a session is treated as a stale relay, not a fatal error', asy
   assert.equal(msgs[0].id, 6);
 });
 
+test('a non-retryable auth failure (wrong credentials) is not retried', async () => {
+  let attempts = 0;
+  const auth = {
+    fetch: async () => {},
+    authorize: async () => {
+      attempts++;
+      const e = new Error('login was rejected');
+      e.retryable = false;
+      throw e;
+    },
+    refresh: async () => { throw new Error('no'); },
+  };
+  const c = new Connection({ resolver: resolverStub(), auth, cache: nullCache(), log: silent, fetchImpl: async () => {}, maxAuthAttempts: 6 });
+  await assert.rejects(() => c.ensureAuth(), /login was rejected/);
+  assert.equal(attempts, 1, 'must not hammer the login with bad credentials');
+});
+
 test('backoff grows and is capped at 8s', () => {
   assert.ok(backoff(1) <= backoff(2));
   assert.ok(backoff(20) <= 8000);
