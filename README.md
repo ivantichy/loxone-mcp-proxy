@@ -162,6 +162,27 @@ user's permissions**. Typical set:
 To keep the assistant **read-only**, either restrict the Loxone user's rights or
 disable the write tools in your MCP client's connector settings.
 
+## State warm-up (optional)
+
+The Miniserver's MCP plugin (tech preview) fills its `control_state` table only
+from **state-change deltas**, and it only starts collecting them once the first
+state query of a server-side session epoch arrives — there is no initial
+snapshot. Practical symptom: in a fresh session, *"what's the temperature at
+home?"* returns no data until each value physically changes.
+
+Set `LOXONE_STATE_WARMUP=1` and the proxy issues one tiny `control_state` nudge
+right after every (re-)initialize, so the Miniserver starts accumulating values
+immediately at connect time instead of at your first question. By the time you
+ask, slow-moving states (room temperatures etc.) have usually re-broadcast and
+are present. This cannot conjure a value that has not changed or re-broadcast
+yet — that part only Loxone can fix server-side — but it removes the
+"assistant starts blind" effect for a long-running Claude Desktop.
+
+`LOXONE_WARMUP_SWEEP=1` additionally touches every control individually after
+the nudge (one `control_state` per control, spaced out). Under currently
+observed firmware semantics the delta subscription is global, so the sweep is
+redundant — it exists as belt-and-braces for future firmware.
+
 ## Security
 
 - **Use a dedicated Loxone user** with the least privilege necessary. The
@@ -210,6 +231,11 @@ All optional, via `.env` or environment:
 | `LOXONE_CACHE_PATH` | `~/.loxone-mcp-proxy/cache.json` | token cache location |
 | `LOXONE_REDIRECT_PORT` | `41678` | loopback port used only as the OAuth redirect target |
 | `LOXONE_REQUEST_TIMEOUT_MS` | `120000` | per-request deadline for MCP calls to the relay |
+| `LOXONE_STATE_WARMUP` | `0` | set `1` to nudge state-delta collection after each (re-)initialize |
+| `LOXONE_WARMUP_SWEEP` | `0` | with warm-up: also touch every control individually |
+| `LOXONE_WARMUP_DELAY_MS` | `1000` | delay between session establishment and the warm-up |
+| `LOXONE_WARMUP_SPACING_MS` | `150` | spacing between per-control sweep calls |
+| `LOXONE_WARMUP_MAX_CONTROLS` | `500` | sweep enumeration cap |
 | `LOXONE_MAX_ATTEMPTS` | `6` | max authentication attempts before giving up |
 | `LOXONE_CONNECT_MIN_INTERVAL_MS` | `2000` | min. spacing between connect-endpoint calls |
 | `LOXONE_ENV_FILE` | — | explicit path to the `.env` file to load |

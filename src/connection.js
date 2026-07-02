@@ -19,6 +19,10 @@ export class Connection {
 
     this.state = null; // {entryOrigin,resource,clientId,accessToken,refreshToken,tokenType,expiresAt}
     this._authInflight = null;
+    // Optional hook: fired whenever an MCP session is (re-)established —
+    // the client's initialize as well as every transparent replay. The state
+    // warmer uses it; failures in the hook never affect the pipe.
+    this.onSessionEstablished = null;
     this.sessionId = null;
     this.protocolVersion = null;
     this.initMessage = null; // remembered "initialize" request for transparent replay
@@ -141,7 +145,11 @@ export class Connection {
         if (!this.sessionId && this.initMessage && message.method !== 'initialize') {
           await this._replayInit();
         }
-        return await this._post(message);
+        const messages = await this._post(message);
+        if (message.method === 'initialize' && messages.some((m) => m && m.result)) {
+          this._sessionEstablished();
+        }
+        return messages;
       } catch (e) {
         lastError = e;
         if (e instanceof Unauthorized) {
@@ -183,6 +191,15 @@ export class Connection {
       await this._post({ jsonrpc: '2.0', method: 'notifications/initialized' });
     } catch (e) {
       this.log.debug('connection: initialized notification failed (non-fatal):', e.message);
+    }
+    this._sessionEstablished();
+  }
+
+  _sessionEstablished() {
+    try {
+      this.onSessionEstablished?.();
+    } catch (e) {
+      this.log.warn('connection: onSessionEstablished hook failed:', e.message);
     }
   }
 

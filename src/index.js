@@ -5,6 +5,7 @@ import { EndpointResolver } from './resolver.js';
 import { LoxoneAuth } from './loxoneAuth.js';
 import { TokenCache } from './cache.js';
 import { Connection } from './connection.js';
+import { StateWarmer } from './stateWarmer.js';
 import { StdioProxy } from './proxy.js';
 
 // A stray rejection is logged but tolerated — background retries may reject
@@ -45,6 +46,18 @@ async function main() {
     maxAuthAttempts: config.maxResolveAttempts,
     requestTimeoutMs: config.requestTimeoutMs,
   });
+
+  if (config.stateWarmup) {
+    const warmer = new StateWarmer({
+      connection,
+      delayMs: config.warmupDelayMs,
+      spacingMs: config.warmupSpacingMs,
+      maxControls: config.warmupMaxControls,
+      sweepAll: config.warmupSweepAll,
+    });
+    connection.onSessionEstablished = () => warmer.schedule();
+    logger.info(`state warm-up enabled (${config.warmupSweepAll ? 'nudge + full sweep' : 'nudge'} after each (re-)initialize)`);
+  }
 
   const proxy = new StdioProxy({ connection });
   proxy.start();

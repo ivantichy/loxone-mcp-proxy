@@ -127,6 +127,24 @@ test('readSSE handles CRLF line endings and multi-line data', async () => {
   assert.deepEqual(msgs, [{ a: 1 }, { b: 2 }]);
 });
 
+test('onSessionEstablished fires on initialize success and on session replay', async () => {
+  let established = 0;
+  const fetchImpl = async (url, opts) => {
+    const b = JSON.parse(opts.body);
+    if (b.method === 'initialize') return resp({ status: 200, headers: { 'content-type': 'application/json', 'mcp-session-id': 'SID' }, body: '{"jsonrpc":"2.0","id":1,"result":{}}' });
+    return resp({ status: 202 });
+  };
+  const auth = { fetch: fetchImpl, authorize: async () => token(), refresh: async () => {} };
+  const c = new Connection({ resolver: resolverStub(), auth, cache: nullCache(), log: silent, fetchImpl });
+  c.state = token();
+  c.onSessionEstablished = () => established++;
+  await c.send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} });
+  assert.equal(established, 1, 'fires after the client initialize');
+  c.sessionId = null; // simulate session loss; next send replays initialize
+  await c.send({ jsonrpc: '2.0', method: 'notifications/whatever' });
+  assert.equal(established, 2, 'fires after a transparent replay');
+});
+
 test('send replays initialize when the session was lost', async () => {
   const posts = [];
   const fetchImpl = async (url, opts) => {
