@@ -39,6 +39,7 @@ async function main() {
     username: config.username,
     password: config.password,
     redirectPort: config.redirectPort,
+    timeoutMs: config.authTimeoutMs,
   });
   const cache = new TokenCache(config.cachePath);
   const connection = new Connection({

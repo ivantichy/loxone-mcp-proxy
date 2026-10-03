@@ -26,6 +26,7 @@ export class Connection {
     this.sessionId = null;
     this.protocolVersion = null;
     this.initMessage = null; // remembered "initialize" request for transparent replay
+    this._initInflight = null; // single-flight guard for the session handshake
 
     const cached = this.cache?.load?.();
     if (cached && cached.accessToken) {
@@ -184,7 +185,25 @@ export class Connection {
   }
 
   /** Re-run the initialize handshake against a fresh session (transparent to Claude). */
+  /**
+   * Re-establish the MCP session, at most one handshake at a time.
+   * Without this guard two callers that both see `sessionId === null` — e.g. a
+   * real request and the StateWarmer timer, which runs outside the request
+   * queue — each send their own `initialize`. The reply that lands last wins,
+   * so the other caller ends up holding a session id the relay has already
+   * replaced, which shows up as spurious "session expired" errors and repeated
+   * handshakes. Mirrors the `_authInflight` guard used for token refresh.
+   */
   async _replayInit() {
+    if (this._initInflight) return this._initInflight;
+    const p = this._replayInitNow().finally(() => {
+      if (this._initInflight === p) this._initInflight = null;
+    });
+    this._initInflight = p;
+    return p;
+  }
+
+  async _replayInitNow() {
     this.log.debug('connection: replaying initialize handshake');
     await this._post(this.initMessage);
     try {
