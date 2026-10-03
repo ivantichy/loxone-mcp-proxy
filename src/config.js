@@ -88,6 +88,7 @@ export function loadConfig() {
     maxResolveAttempts: intEnv('LOXONE_MAX_ATTEMPTS', 6),
     connectMinIntervalMs: intEnv('LOXONE_CONNECT_MIN_INTERVAL_MS', 2000, { min: 0 }),
     requestTimeoutMs: intEnv('LOXONE_REQUEST_TIMEOUT_MS', 120_000, { min: 1000 }),
+    authTimeoutMs: intEnv('LOXONE_AUTH_TIMEOUT_MS', 30_000, { min: 1000 }),
     stateWarmup: bool(process.env.LOXONE_STATE_WARMUP),
     warmupSweepAll: bool(process.env.LOXONE_WARMUP_SWEEP),
     warmupDelayMs: intEnv('LOXONE_WARMUP_DELAY_MS', 1000, { min: 0 }),

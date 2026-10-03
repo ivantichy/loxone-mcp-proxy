@@ -20,13 +20,33 @@ import logger from './logger.js';
  * reachable connect "entry" origin, NOT to `resource` (see Connection._mcpUrl).
  */
 export class LoxoneAuth {
-  constructor({ username, password, fetchImpl = fetch, log = logger, redirectPort = 41678, clientName = 'loxone-mcp-proxy' }) {
+  constructor({ username, password, fetchImpl = fetch, log = logger, redirectPort = 41678, clientName = 'loxone-mcp-proxy', timeoutMs = 30_000 }) {
     this.username = username;
     this.password = password;
     this.fetch = fetchImpl;
     this.log = log;
     this.clientName = clientName;
     this.redirectUri = `http://localhost:${redirectPort}/callback`;
+    this.timeoutMs = timeoutMs;
+  }
+
+  /**
+   * fetch with a deadline. Without it a Miniserver (or relay) that accepts the
+   * connection and then goes quiet hangs the whole login for good: the attempt
+   * never returns, so the retry loop in Connection._fullAuth never gets to run
+   * and the proxy stays dead until it is restarted by hand.
+   * Aborts surface as a retryable AuthError so that loop can do its job.
+   */
+  async _fetch(url, opts = {}) {
+    const signal = opts.signal ?? AbortSignal.timeout(this.timeoutMs);
+    try {
+      return await this.fetch(url, { ...opts, signal });
+    } catch (e) {
+      if (e && (e.name === 'TimeoutError' || e.name === 'AbortError')) {
+        throw new AuthError(`auth request timed out after ${this.timeoutMs} ms: ${url}`);
+      }
+      throw e;
+    }
   }
 
   /**
@@ -53,7 +73,7 @@ export class LoxoneAuth {
       client_id: clientId,
       resource,
     });
-    const res = await this.fetch(`${entryOrigin}/mcp/oauth/token`, {
+    const res = await this._fetch(`${entryOrigin}/mcp/oauth/token`, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body,
@@ -63,7 +83,7 @@ export class LoxoneAuth {
   }
 
   async _discoverResource(entryOrigin) {
-    const res = await this.fetch(`${entryOrigin}/mcp/.well-known/oauth-protected-resource`);
+    const res = await this._fetch(`${entryOrigin}/mcp/.well-known/oauth-protected-resource`);
     if (!res.ok) throw new AuthError(`protected-resource metadata: HTTP ${res.status}`, { status: res.status });
     const j = await res.json();
     if (!j || !j.resource) throw new AuthError('protected-resource metadata is missing "resource"');
@@ -71,7 +91,7 @@ export class LoxoneAuth {
   }
 
   async _register(entryOrigin) {
-    const res = await this.fetch(`${entryOrigin}/mcp/oauth/register`, {
+    const res = await this._fetch(`${entryOrigin}/mcp/oauth/register`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -101,7 +121,7 @@ export class LoxoneAuth {
     })) au.searchParams.set(k, v);
 
     // 1) GET the login form
-    const g = await this.fetch(au, { headers: { accept: 'text/html' }, redirect: 'manual' });
+    const g = await this._fetch(au, { headers: { accept: 'text/html' }, redirect: 'manual' });
     if (g.status !== 200) {
       const loc = g.headers.get('location');
       if (loc) {
@@ -123,7 +143,7 @@ export class LoxoneAuth {
       else body.set(inp.name, inp.value ?? '');
     }
     const actionUrl = form.action ? new URL(form.action, au) : au;
-    const p = await this.fetch(actionUrl, {
+    const p = await this._fetch(actionUrl, {
       method: (form.method || 'POST').toUpperCase(),
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body,
@@ -157,7 +177,7 @@ export class LoxoneAuth {
       code_verifier: verifier,
       resource,
     });
-    const res = await this.fetch(`${entryOrigin}/mcp/oauth/token`, {
+    const res = await this._fetch(`${entryOrigin}/mcp/oauth/token`, {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body,
